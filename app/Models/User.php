@@ -18,7 +18,7 @@ class User extends Authenticatable
         'email',
         'password',
         'is_blocked',
-        'role_id', // ⬅️ Tambah ini untuk foreign key (1 user = 1 role)
+        'role_id', // legacy 1:1
     ];
 
     protected $hidden = [
@@ -26,18 +26,14 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'is_blocked' => 'boolean',
-        ];
-    }
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'is_blocked' => 'boolean',
+    ];
 
     /**
-     * Relasi ke Role (1 user = 1 role)
-     * Gunakan belongsTo karena user punya 1 role
+     * Relasi ke Role tradisional (1 user = 1 role)
      */
     public function role(): BelongsTo
     {
@@ -45,31 +41,24 @@ class User extends Authenticatable
     }
 
     /**
-     * Helper cek role berdasarkan nama
+     * Override hasRole() Spatie supaya tetap mendukung role_id tradisional
      */
-    public function hasRole(string $roleName): bool
+    public function hasRole($roles): bool
     {
-        return $this->role?->name === $roleName;
+        if (is_string($roles)) {
+            return $this->role && $this->role->name === $roles;
+        }
+
+        if (is_array($roles)) {
+            return $this->role && in_array($this->role->name, $roles);
+        }
+
+        return false;
     }
 
-    /**
-     * Helper cek permission melalui role
-     */
-    public function hasPermission(string $permissionName): bool
-    {
-        return $this->role?->permissions->contains('name', $permissionName) ?? false;
-    }
 
     /**
-     * Mendapatkan semua permissions user melalui role-nya
-     */
-    public function getAllPermissions()
-    {
-        return $this->role?->permissions ?? collect([]);
-    }
-
-    /**
-     * Cek apakah user aktif (tidak di-block)
+     * Cek apakah user aktif (tidak diblok)
      */
     public function isActive(): bool
     {
@@ -77,7 +66,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Scope untuk filter user berdasarkan role
+     * Scope untuk filter user berdasarkan role (legacy)
      */
     public function scopeWithRole($query, string $roleName)
     {

@@ -57,11 +57,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('item-requests/stats', [ItemRequestController::class, 'stats']);
     // Item Request CRUD - put this AFTER specific routes
     Route::apiResource('item-requests', ItemRequestController::class);
+    Route::get('approval-lists', [ItemRequestController::class, 'approvalList']);
     Route::post('item-requests/{itemRequest}/cancel', [ItemRequestController::class, 'cancel']);
-    Route::post('item-requests/{id}/submit', [ItemRequestController::class, 'submit']);
-    // User specific routes
-    Route::get('my-requests', [ItemRequestController::class, 'myRequests']);
-    Route::get('my-requests/stats', [ItemRequestController::class, 'myStats']);
+    Route::post('item-requests/{itemRequest}/submit', [ItemRequestController::class, 'submit']);
 
     // Email settings routes
     Route::get('/email-settings', [EmailSettingsController::class, 'index']);
@@ -69,11 +67,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/test-email', [EmailSettingsController::class, 'testEmail']);
 
     // Admin only routes
-    Route::middleware(['role:admin'])->group(function () {
-        Route::patch('item-requests/{id}/approve', [ItemRequestController::class, 'approve']);
-        Route::patch('item-requests/{id}/reject', [ItemRequestController::class, 'reject']);
-        Route::get('item-requests/pending/all', [ItemRequestController::class, 'pendingRequests']);
-    });
+    Route::post('item-requests/{itemRequest}/approve', [ItemRequestController::class, 'approve']);
+    Route::post('/item-requests/{itemRequest}/partial-approve', [ItemRequestController::class, 'partialApprove']);
+    Route::post('item-requests/{itemRequest}/reject', [ItemRequestController::class, 'reject']);
 
     // Dashboard stats
     Route::get('dashboard/stats', function () {

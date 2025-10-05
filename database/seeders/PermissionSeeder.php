@@ -3,104 +3,75 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class PermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        $now = Carbon::now();
+        // Reset cache roles and permissions
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Pisahkan menjadi approvalnote (admin) dan requestnote (user)
+        // Daftar permissions
         $resources = [
             'dashboard'       => ['view'],
             'homeuser'        => ['view'],
-            'inventaris'      => ['view', 'create', 'edit', 'delete'], // User pakai ini untuk action request
-            'inventory'       => ['view', 'create', 'edit', 'delete'], // Management produk (admin)
+            'inventaris'      => ['view', 'create', 'edit', 'delete'],
+            'inventory'       => ['view', 'create', 'edit', 'delete'],
             'stocknote'       => ['view'],
-            'requestnote'     => ['view'], // ✅ User HANYA view history request sendiri
-            'approvalnote'    => ['view', 'approve', 'partially_approve', 'reject', 'complete'], // ✅ Admin untuk approval
+            'requestnote'     => ['view'],
+            'approvalnote'    => ['view', 'delete'],
             'users'           => ['view', 'create', 'edit', 'delete'],
             'email_settings'  => ['view', 'edit'],
         ];
 
-        $permissions = [];
+        // Create permissions
         foreach ($resources as $res => $actions) {
             foreach ($actions as $act) {
-                $permissions[] = [
-                    'name'        => "{$act}_{$res}",
-                    'description' => ucfirst($act) . ' ' . ucfirst(str_replace('_', ' ', $res)),
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
-                ];
+                Permission::updateOrCreate(
+                    ['name' => "{$act}_{$res}"],
+                    ['guard_name' => 'web']
+                );
             }
         }
 
-        DB::table('permissions')->insert($permissions);
-        $allPermissionIds = DB::table('permissions')->pluck('id');
+        // Assign permissions to roles
+        $superadmin = Role::where('name', 'Superadmin')->first();
+        $admin = Role::where('name', 'Admin')->first();
+        $user = Role::where('name', 'User')->first();
 
-        // Superadmin -> semua permission
-        if ($superadmin = DB::table('roles')->where('name', 'Superadmin')->first()) {
-            foreach ($allPermissionIds as $pid) {
-                DB::table('role_permission')->updateOrInsert([
-                    'role_id'       => $superadmin->id,
-                    'permission_id' => $pid,
-                ]);
-            }
+        // Superadmin - semua permissions
+        if ($superadmin) {
+            $superadmin->givePermissionTo(Permission::all());
         }
 
-        // Admin -> bisa approval di approvalnote
-        if ($admin = DB::table('roles')->where('name', 'Admin')->first()) {
-            $adminPerms = DB::table('permissions')
-                ->whereIn('name', [
-                    // Inventory management
-                    'view_dashboard',
-                    'view_inventory',
-                    'create_inventory',
-                    'edit_inventory',
-                    'delete_inventory',
-                    'view_stocknote',
-
-                    // Approvalnote - ADMIN BISA APPROVAL
-                    'view_approvalnote',
-                    'approve_approvalnote',
-                    'partially_approve_approvalnote',
-                    'reject_approvalnote',
-                    'complete_approvalnote',
-
-                    // Juga bisa view inventaris & requestnote
-                    'view_inventaris',
-                    'view_requestnote',
-                ])->pluck('id');
-
-            foreach ($adminPerms as $pid) {
-                DB::table('role_permission')->updateOrInsert([
-                    'role_id'       => $admin->id,
-                    'permission_id' => $pid,
-                ]);
-            }
+        // Admin permissions
+        if ($admin) {
+            $adminPermissions = [
+                'view_dashboard',
+                'view_inventory',
+                'create_inventory',
+                'edit_inventory',
+                'delete_inventory',
+                'view_stocknote',
+                'view_approvalnote',
+                'delete_approvalnote', // ✅ Fixed typo: approvalnote
+            ];
+            $admin->givePermissionTo($adminPermissions);
         }
 
-        // User -> view requestnote saja, action pakai inventaris permissions
-        if ($user = DB::table('roles')->where('name', 'User')->first()) {
-            $userPerms = DB::table('permissions')
-                ->whereIn('name', [
-                    'view_homeuser',
-                    'view_inventaris',     // ✅ Browse produk
-                    'create_inventaris',   // ✅ Buat request dari inventaris
-                    'edit_inventaris',     // ✅ Update request (draft/pending)
-                    'delete_inventaris',   // ✅ Cancel/delete request
-                    'view_requestnote',    // ✅ HANYA VIEW history request sendiri
-                    // TIDAK ada akses approvalnote
-                ])->pluck('id');
-
-            foreach ($userPerms as $pid) {
-                DB::table('role_permission')->updateOrInsert([
-                    'role_id'       => $user->id,
-                    'permission_id' => $pid,
-                ]);
-            }
+        // User permissions  
+        if ($user) {
+            $userPermissions = [
+                'view_homeuser',
+                'view_inventaris',
+                'create_inventaris',
+                'edit_inventaris',
+                'delete_inventaris',
+                'view_requestnote',
+            ];
+            $user->givePermissionTo($userPermissions);
         }
     }
 }

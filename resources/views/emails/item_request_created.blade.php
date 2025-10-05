@@ -14,9 +14,16 @@
                     style="background:#ffffff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1); padding:24px;">
                     <tr>
                         <td>
-                            <h1 style="display:block; width:100%; background-color:green; color:#fff; font-size:24px; margin:0
-                                0 16px 0; padding:12px 16px; border-radius:8px 8px 0 0;">Item Request
-                                Baru</h1>
+                            <!-- LOGO HEADER -->
+                            <div style="text-align: center; margin-bottom: 20px;">
+                                <img src="{{ $message->embed(public_path('images/logo.png')) }}"
+                                    alt="Inventopia Logo"
+                                    style="max-width: 150px; height: auto;">
+                            </div>
+
+                            <h1 style="display:block; width:100%; background-color:green; color:#fff; font-size:24px; margin:0 0 16px 0; padding:12px 16px; border-radius:8px 8px 0 0;">
+                                Item Request Baru
+                            </h1>
 
                             <p style="font-size:16px; margin:8px 0;">
                                 <strong style="color:black;">Request No:</strong> {{ $itemRequest->request_number }}
@@ -60,8 +67,12 @@
                             <p style="font-size:16px; margin:8px 0; color:black;">Untuk melakukan approval, silakan klik
                                 link berikut:
                             </p>
-                            <a href="{{ url('/item-requests/' . $itemRequest->id) }}"
-                                style="color:#2c7be5; text-decoration:none;">Lihat Item Request</a>
+                            <div style="margin: 20px 0;">
+                                <a href="{{ url('/item-requests/' . $itemRequest->id) }}"
+                                    style="display: inline-block; text-align: center; background-color: green; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: bold; font-size: 16px;">
+                                    Lihat Item Request
+                                </a>
+                            </div>
                             <p style="margin-top:24px; font-size:16px; color:black;">
                                 Terima kasih,<br>
                                 <strong>{{ $itemRequest->user->name ?? 'Unknown' }}</strong>

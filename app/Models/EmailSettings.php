@@ -22,4 +22,20 @@ class EmailSettings extends Model
         'request_notifications' => 'boolean',
         'low_stock_notifications' => 'boolean',
     ];
+
+    // app/Models/EmailSettings.php
+    public static function getSettings()
+    {
+        $settings = self::first();
+        if (!$settings) {
+            $settings = self::create([
+                'admin_email' => 'aribiya@gmail.com',
+                'cc_emails' => [],
+                'request_notifications' => true,
+                'low_stock_notifications' => true,
+                'low_stock_threshold' => 10
+            ]);
+        }
+        return $settings;
+    }
 }

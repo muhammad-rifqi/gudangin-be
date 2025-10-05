@@ -13,13 +13,16 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');                      // Nama Lengkap
-            $table->string('username')->unique();        // Username unik
-            $table->string('email')->unique();           // Email unik
+            $table->string('name');
+            $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');                  // Password login
-            $table->boolean('is_blocked')->default(false); // Status blokir/unblock
-            $table->foreignId('role_id')->nullable()->constrained('roles')->onDelete('set null'); // 1 user = 1 role
+            $table->string('password');
+            $table->boolean('is_blocked')->default(false);
+
+            // SEMENTARA: Comment dulu foreign key nya
+            // $table->foreignId('role_id')->nullable()->constrained('roles')->onDelete('set null');
+            $table->foreignId('role_id')->nullable();
+
             $table->rememberToken();
             $table->timestamps();
         });

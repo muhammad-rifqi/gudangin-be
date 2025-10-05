@@ -21,7 +21,6 @@ class UserSeeder extends Seeder
             ['email' => 'superadmin@example.com'],
             [
                 'name'       => 'Super Administrator',
-                'username'   => 'superadmin',
                 'password'   => Hash::make('password123'),
                 'is_blocked' => false,
                 'role_id'    => $superadminRole?->id,
@@ -30,18 +29,17 @@ class UserSeeder extends Seeder
 
         // === Admins ===
         $adminUsers = [
-            ['Administrator', 'admin',      'admin@example.com'],
-            ['John Admin',    'johnadmin',  'johnadmin@example.com'],
-            ['Admin Photo',   'adminphoto', 'adminphoto@example.com'],
-            ['Test Admin',    'testadmin',  'test@example.com'],
+            ['Administrator', 'admin@example.com'],
+            ['John Admin', 'johnadmin@example.com'],
+            ['Admin Photo', 'adminphoto@example.com'],
+            ['Test Admin', 'test@example.com'],
         ];
 
-        foreach ($adminUsers as [$name, $username, $email]) {
+        foreach ($adminUsers as [$name, $email]) {
             User::updateOrCreate(
                 ['email' => $email],
                 [
                     'name'       => $name,
-                    'username'   => $username,
                     'password'   => Hash::make('password123'),
                     'is_blocked' => false,
                     'role_id'    => $adminRole?->id,
@@ -54,23 +52,28 @@ class UserSeeder extends Seeder
             ['email' => 'blocked@example.com'],
             [
                 'name'       => 'Blocked Admin',
-                'username'   => 'blockedadmin',
                 'password'   => Hash::make('password123'),
                 'is_blocked' => true,
                 'role_id'    => $adminRole?->id,
             ]
         );
 
+        $Users = [
+            ['Jane Admin', 'janeadmin@example.com'],
+            ['Silverblade', 'silverbladeid@gmail.com'],
+        ];
+
         // === User biasa ===
-        User::updateOrCreate(
-            ['email' => 'janeadmin@example.com'],
-            [
-                'name'       => 'Jane Admin',
-                'username'   => 'janeadmin',
-                'password'   => Hash::make('password123'),
-                'is_blocked' => false,
-                'role_id'    => $userRole?->id,
-            ]
-        );
+        foreach ($Users as [$name, $email]) {
+            User::updateOrCreate(
+                ['email' => $email],
+                [
+                    'name'       => $name,
+                    'password'   => Hash::make('password123'),
+                    'is_blocked' => false,
+                    'role_id'    => $userRole?->id,
+                ]
+            );
+        }
     }
 }

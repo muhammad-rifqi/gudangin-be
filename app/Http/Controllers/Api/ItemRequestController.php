@@ -1,6 +1,5 @@
 <?php
 
-// app/Http/Controllers/Api/ItemRequestController.php
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -8,6 +7,9 @@ use App\Models\ItemRequest;
 use App\Models\ItemRequestDetail;
 use App\Models\ItemRequestLog;
 use App\Mail\ItemRequestCreated;
+use App\Mail\ItemRequestApproved;
+use App\Mail\ItemRequestPartialApproved;
+use App\Mail\ItemRequestRejected;
 use App\Models\Product;
 use App\Models\EmailSettings;
 use App\Models\User;
@@ -33,10 +35,11 @@ class ItemRequestController extends Controller
             /** @var User $user */
             $user = Auth::user();
 
-            // Filter by user if not admin
-            if (!$user->hasRole('admin')) {
+            // Filter untuk user biasa saja
+            if ($user->hasRole('user')) {
                 $query->byUser($user->id);
             }
+
 
             // Filter by status
             if ($request->has('status') && $request->status !== 'all') {
@@ -70,6 +73,53 @@ class ItemRequestController extends Controller
         }
     }
 
+    public function approvalList(Request $request): JsonResponse
+    {
+        try {
+            /** @var User $user */
+            $user = Auth::user();
+
+            // Hanya admin / superadmin yang boleh akses
+            if (!$user->hasRole('Admin') && !$user->hasRole('Superadmin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $query = ItemRequest::with(['user', 'details.product.category', 'approvedBy'])
+                ->orderBy('created_at', 'desc');
+
+            // Filter hanya yang masih pending
+            $query->where('status', 'pending');
+
+            // Optional: bisa filter tambahan
+            if ($request->has('search') && $request->search) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('request_number', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'like', "%{$search}%");
+                        });
+                });
+            }
+
+            $requests = $query->paginate(10);
+
+            return response()->json([
+                'success' => true,
+                'data' => $requests,
+                'message' => 'Approval requests retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve approval requests',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -78,7 +128,7 @@ class ItemRequestController extends Controller
         // --- Validasi dasar ---
         $validator = Validator::make($request->all(), [
             'note'    => 'nullable|string',
-            'action'  => 'nullable|in:draft,submit',    // <-- tambah validasi action
+            'action'  => 'nullable|in:draft,submit',
             'details' => 'required|array|min:1',
             'details.*.product_id' => 'required|exists:products,id',
             'details.*.qty'        => 'required|numeric|min:1',
@@ -91,11 +141,11 @@ class ItemRequestController extends Controller
             ], 422);
         }
 
-        $action = $request->input('action', 'submit'); // default draft
+        $action = $request->input('action', 'submit'); // default ke submit
         DB::beginTransaction();
 
         try {
-            // Jika submit, lakukan validasi stok lebih dulu
+            // Jika submit, cek stok dulu
             if ($action === 'submit') {
                 foreach ($request->details as $detail) {
                     $product = Product::findOrFail($detail['product_id']);
@@ -113,7 +163,7 @@ class ItemRequestController extends Controller
             $itemRequest = ItemRequest::create([
                 'user_id'        => $request->user()->id,
                 'note'           => $request->note,
-                'request_number' => 'REQ-' . now()->format('YmdHis'),
+                'request_number' => ItemRequest::generateRequestNumber(),
                 'status'         => $action === 'submit' ? 'pending' : 'draft',
                 'approved_by'    => null,
                 'approved_at'    => null,
@@ -121,15 +171,14 @@ class ItemRequestController extends Controller
 
             // === Detail item ===
             foreach ($request->details as $detail) {
-                ItemRequestDetail::create([
-                    'item_request_id'    => $itemRequest->id,
+                $itemRequest->details()->create([
                     'product_id'         => $detail['product_id'],
                     'requested_quantity' => $detail['qty'],
                     'approved_quantity'  => 0,
                     'status'             => $action === 'submit' ? 'pending' : 'draft',
                 ]);
 
-                // Kurangi stok hanya jika submit
+                // Kurangi stok jika submit
                 if ($action === 'submit') {
                     $product = Product::findOrFail($detail['product_id']);
                     $oldStock = $product->stock_quantity;
@@ -162,21 +211,26 @@ class ItemRequestController extends Controller
 
             DB::commit();
 
-            // Email hanya jika submit
+            // === Kirim email hanya jika submit ===
             if ($action === 'submit') {
                 try {
-                    $emailSettings = EmailSettings::first();
+                    $emailSettings = EmailSettings::getSettings();
                     if ($emailSettings && $emailSettings->request_notifications) {
+                        $itemRequest->load('user', 'details.product');
+
                         $mail = Mail::to($emailSettings->admin_email);
 
                         if (!empty($emailSettings->cc_emails)) {
                             $mail->cc($emailSettings->cc_emails);
                         }
 
+                        // GUNAKAN KEMBALI MAILABLE CLASS DENGAN PDF
                         $mail->send(new ItemRequestCreated($itemRequest));
+
+                        Log::info("Email dengan PDF attachment dikirim ke {$emailSettings->admin_email}");
                     }
                 } catch (\Exception $mailErr) {
-                    Log::error('Gagal kirim email notifikasi: ' . $mailErr->getMessage());
+                    Log::error('Gagal kirim email: ' . $mailErr->getMessage());
                 }
             }
 
@@ -184,7 +238,7 @@ class ItemRequestController extends Controller
                 'success' => true,
                 'data'    => $itemRequest->load('details.product'),
                 'message' => $action === 'submit'
-                    ? 'Request berhasil dibuat dan stok dikurangi'
+                    ? 'Request berhasil dibuat, stok dikurangi, dan notifikasi terkirim'
                     : 'Draft berhasil disimpan',
             ], 201);
         } catch (\Exception $e) {
@@ -192,6 +246,101 @@ class ItemRequestController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyimpan data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update the specified resource in storage (for draft requests)
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'note'    => 'nullable|string',
+            'details' => 'required|array|min:1',
+            'details.*.product_id' => 'required|exists:products,id',
+            'details.*.qty'        => 'required|numeric|min:1',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors()
+            ], 422);
+        }
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        DB::beginTransaction();
+
+        try {
+            // Cari item request yang masih draft dan milik user
+            $itemRequest = ItemRequest::where('id', $id)
+                ->where('user_id', $user->id)
+                ->where('status', 'draft')
+                ->firstOrFail();
+
+            // Simpan data lama untuk log
+            $oldData = $itemRequest->toArray();
+            $oldDetails = $itemRequest->details->toArray();
+
+            // Update header request
+            $itemRequest->update([
+                'note' => $request->note
+            ]);
+
+            // Hapus detail lama
+            $itemRequest->details()->delete();
+
+            // Buat detail baru
+            foreach ($request->details as $detail) {
+                ItemRequestDetail::create([
+                    'item_request_id'    => $itemRequest->id,
+                    'product_id'         => $detail['product_id'],
+                    'requested_quantity' => $detail['qty'],
+                    'approved_quantity'  => 0,
+                    'status'             => 'draft',
+                ]);
+            }
+
+            // Catat log
+            ItemRequestLog::create([
+                'item_request_id' => $itemRequest->id,
+                'user_id'         => $user->id,
+                'action'          => 'updated_draft',
+                'old_data'        => [
+                    'header' => $oldData,
+                    'details' => $oldDetails
+                ],
+                'new_data'        => [
+                    'header' => $itemRequest->toArray(),
+                    'details' => $itemRequest->details->toArray()
+                ],
+                'description'     => "Draft request updated",
+            ]);
+
+            DB::commit();
+
+            // Reload relationships
+            $itemRequest->load('details.product');
+
+            return response()->json([
+                'success' => true,
+                'data'    => $itemRequest,
+                'message' => 'Draft request updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Error updating draft request: ' . $e->getMessage(), [
+                'request_id' => $id,
+                'user_id' => $user->id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update draft request: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -212,8 +361,8 @@ class ItemRequestController extends Controller
             /** @var User $user */
             $user = Auth::user();
 
-            // Check if user can view this request
-            if (!$user->hasRole('admin') && $request->user_id !== $user->id) {
+            // ✅ PERBAIKI: Gunakan case yang sama dengan seeder
+            if (!$user->hasRole('Admin') && $request->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to view this request'
@@ -299,22 +448,11 @@ class ItemRequestController extends Controller
             $itemRequest->refresh();
             $itemRequest->load(['details.product', 'user']);
 
-            // Mengirim dengan logging yang lebih detail
+            // === Kirim email ===
             try {
-                Log::info('Attempting to send email for submitted draft', [
-                    'request_id' => $itemRequest->id,
-                    'request_number' => $itemRequest->request_number,
-                    'status' => $itemRequest->status
-                ]);
-
-                $emailSettings = EmailSettings::first();
-
+                $emailSettings = EmailSettings::getSettings(); // samain sama store()
                 if ($emailSettings && $emailSettings->request_notifications) {
-                    Log::info('Email conditions met, preparing to send', [
-                        'admin_email' => $emailSettings->admin_email,
-                        'cc_emails' => $emailSettings->cc_emails,
-                        'request_notifications' => $emailSettings->request_notifications
-                    ]);
+                    $itemRequest->load('user', 'details.product');
 
                     $mail = Mail::to($emailSettings->admin_email);
 
@@ -322,26 +460,26 @@ class ItemRequestController extends Controller
                         $mail->cc($emailSettings->cc_emails);
                     }
 
-                    // Memastikan data yang dikirim ke Mailable bersifta fresh
+                    // pakai Mailable yang sama
                     $mail->send(new ItemRequestCreated($itemRequest));
 
-                    Log::info('Email notification sent successfully for submitted draft', [
+                    Log::info("Email dengan PDF attachment dikirim ke {$emailSettings->admin_email}", [
                         'request_number' => $itemRequest->request_number,
                         'recipient' => $emailSettings->admin_email
                     ]);
                 } else {
-                    Log::warning('Email not sent - settings not configured', [
+                    Log::warning('Email tidak dikirim karena setting tidak aktif', [
                         'has_email_settings' => !is_null($emailSettings),
                         'notifications_enabled' => $emailSettings ? $emailSettings->request_notifications : false
                     ]);
                 }
             } catch (\Exception $mailErr) {
-                Log::error('Gagal kirim email notifikasi untuk draft yang di-submit: ' . $mailErr->getMessage(), [
-                    'exception' => $mailErr->getTraceAsString(),
-                    'request_id' => $itemRequest->id
+                Log::error('Gagal kirim email submit: ' . $mailErr->getMessage(), [
+                    'request_id' => $itemRequest->id,
+                    'trace' => $mailErr->getTraceAsString()
                 ]);
-                // Jangan return error, biarkan proses continue
             }
+
 
             DB::commit();
 
@@ -363,6 +501,226 @@ class ItemRequestController extends Controller
         }
     }
 
+    public function partialApprove(Request $request, $id): JsonResponse
+    {
+        try {
+            /** @var User|null $user */
+            $user = Auth::user();
+
+            if (!$user || !$user->hasRole('Admin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $itemRequest = ItemRequest::findOrFail($id);
+
+            if ($itemRequest->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Request already processed'
+                ], 400);
+            }
+
+            $oldStatus = $itemRequest->status;
+            $newStatus = 'partially_approved';
+
+            $itemRequest->update([
+                'status'      => $newStatus,
+                'approved_by' => $user->id,
+                'approved_at' => now(),
+            ]);
+
+            ItemRequestLog::create([
+                'item_request_id' => $itemRequest->id,
+                'user_id'         => $user->id,
+                'action'          => 'partial_approved',
+                'old_data'        => ['status' => $oldStatus],
+                'new_data'        => ['status' => $newStatus],
+                'description'     => "Request {$oldStatus} → {$newStatus}",
+            ]);
+
+            $itemRequest->refresh();
+            $itemRequest->load(['details.product', 'user']);
+
+            try {
+                Mail::to($itemRequest->user->email)
+                    ->send(new ItemRequestPartialApproved($itemRequest, $newStatus));
+            } catch (\Exception $mailErr) {
+                Log::error('Gagal kirim email partial approval: ' . $mailErr->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Request {$newStatus} successfully",
+                'data'    => $itemRequest
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to partial approve request',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function approve(Request $request, $id): JsonResponse
+    {
+        try {
+            /** @var User|null $user */
+            $user = Auth::user();
+
+            if (!$user || !$user->hasRole('Superadmin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $itemRequest = ItemRequest::findOrFail($id);
+
+            if (!in_array($itemRequest->status, ['pending', 'partially_approved'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Request already processed'
+                ], 400);
+            }
+
+            $oldStatus = $itemRequest->status;
+            $newStatus = 'approved';
+
+            $itemRequest->update([
+                'status'      => $newStatus,
+                'approved_by' => $user->id,
+                'approved_at' => now(),
+            ]);
+
+            ItemRequestLog::create([
+                'item_request_id' => $itemRequest->id,
+                'user_id'         => $user->id,
+                'action'          => 'approved',
+                'old_data'        => ['status' => $oldStatus],
+                'new_data'        => ['status' => $newStatus],
+                'description'     => "Request {$oldStatus} → {$newStatus}",
+            ]);
+
+            $itemRequest->refresh();
+            $itemRequest->load(['details.product', 'user']);
+
+            try {
+                Mail::to($itemRequest->user->email)
+                    ->send(new ItemRequestApproved($itemRequest, $newStatus));
+            } catch (\Exception $mailErr) {
+                Log::error('Gagal kirim email approval: ' . $mailErr->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Request {$newStatus} successfully",
+                'data'    => $itemRequest
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to approve request',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function reject(Request $request, $id): JsonResponse
+    {
+        DB::beginTransaction(); // TAMBAH INI
+
+        try {
+            /** @var User|null $user */
+            $user = Auth::user();
+
+            // Pastikan user ada dan punya role Admin / Superadmin
+            if (!$user || !$user->hasRole(['Admin', 'Superadmin'])) {
+                DB::rollBack(); // TAMBAH INI
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $itemRequest = ItemRequest::findOrFail($id);
+
+            // Cegah reject request yang sudah diproses
+            if ($itemRequest->status !== 'pending') {
+                DB::rollBack(); // TAMBAH INI
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Request already processed'
+                ], 400);
+            }
+
+            $oldStatus = $itemRequest->status;
+            $newStatus = 'rejected';
+
+            // Update data
+            $itemRequest->update([
+                'status'      => $newStatus,
+                'approved_by' => $user->id,   // reuse kolom
+                'approved_at' => now(),
+                'admin_note'  => $request->input('note') ?? null,
+            ]);
+
+            // Log perubahan
+            ItemRequestLog::create([
+                'item_request_id' => $itemRequest->id,
+                'user_id'         => $user->id,
+                'action'          => 'rejected',
+                'old_data'        => ['status' => $oldStatus],
+                'new_data'        => ['status' => $newStatus],
+                'description'     => "Request {$oldStatus} → {$newStatus}",
+            ]);
+
+            // Reload data untuk email
+            $itemRequest->refresh();
+            $itemRequest->load(['details.product', 'user']);
+
+            // Kirim email
+            try {
+                Mail::to($itemRequest->user->email)
+                    ->send(new ItemRequestRejected($itemRequest, $newStatus, $request->input('note')));
+
+                Log::info("Email rejection dikirim ke {$itemRequest->user->email}", [
+                    'request_number' => $itemRequest->request_number,
+                    'status'         => $newStatus,
+                ]);
+            } catch (\Exception $mailErr) {
+                Log::error('Gagal kirim email rejection: ' . $mailErr->getMessage(), [
+                    'request_id' => $itemRequest->id,
+                ]);
+                // Jangan rollback hanya karena email gagal
+            }
+
+            DB::commit(); // PASTIKAN INI SEBELUM RETURN
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Request rejected successfully',
+                'data'    => $itemRequest
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack(); // TAMBAH INI DI CATCH
+
+            Log::error('Reject request error: ' . $e->getMessage(), [
+                'request_id' => $id,
+                'user_id' => $user->id ?? null,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reject request',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     /**
      * Remove the specified resource from storage.
      */
@@ -374,8 +732,8 @@ class ItemRequestController extends Controller
             /** @var User $user */
             $user = Auth::user();
 
-            // Only admin can delete requests
-            if (!$user->hasRole('admin')) {
+            // ✅ PERBAIKI: Gunakan case yang sama dengan seeder
+            if (!$user->hasRole('Admin')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only admin can delete requests'
@@ -456,7 +814,6 @@ class ItemRequestController extends Controller
         ]);
     }
 
-
     /**
      * Get request statistics
      */
@@ -466,7 +823,9 @@ class ItemRequestController extends Controller
             /** @var User $user */
             $user = Auth::user();
             $userId = $user->id;
-            $isAdmin = $user->hasRole('admin');
+
+            // ✅ PERBAIKI: Gunakan case yang sama dengan seeder
+            $isAdmin = $user->hasRole('Admin');
 
             if ($isAdmin) {
                 $stats = [

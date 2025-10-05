@@ -12,23 +12,13 @@ use Illuminate\Support\Facades\Log;
 
 class EmailSettingsController extends Controller
 {
+    // EmailSettingsController
     public function index(): JsonResponse
     {
         try {
             Log::info('Fetching email settings');
 
-            $settings = EmailSettings::first();
-
-            if (!$settings) {
-                // Create default settings if not exists
-                $settings = EmailSettings::create([
-                    'admin_email' => 'aribiya@gmail.com',
-                    'cc_emails' => [],
-                    'request_notifications' => true,
-                    'low_stock_notifications' => true,
-                    'low_stock_threshold' => 10
-                ]);
-            }
+            $settings = EmailSettings::getSettings(); // ← PAKAI METHOD BARU
 
             return response()->json([
                 'success' => true,

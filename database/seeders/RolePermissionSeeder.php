@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\Models\Role;
+use Spatie\Permission\Models\Role;
 
 class RolePermissionSeeder extends Seeder
 {
@@ -12,17 +12,30 @@ class RolePermissionSeeder extends Seeder
      */
     public function run(): void
     {
+        // Reset cache roles and permissions
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
         $roles = [
-            ['name' => 'Superadmin', 'description' => 'Full access'],
-            ['name' => 'Admin',      'description' => 'Manage content'],
-            ['name' => 'User',       'description' => 'Regular user'],
+            [
+                'name' => 'Superadmin',
+                'guard_name' => 'web',
+            ],
+            [
+                'name' => 'Admin',
+                'guard_name' => 'web',
+            ],
+            [
+                'name' => 'User',
+                'guard_name' => 'web',
+            ],
         ];
 
         foreach ($roles as $role) {
-            // firstOrCreate mencegah duplikasi dan tetap bisa update kolom lain
             Role::updateOrCreate(
-                ['name' => $role['name']],      // kondisi unik
-                ['description' => $role['description']]
+                ['name' => $role['name']],
+                [
+                    'guard_name' => $role['guard_name'],
+                ]
             );
         }
     }

@@ -22,7 +22,7 @@
                             </div>
 
                             <h1 style="display:block; width:100%; background-color:green; color:#fff; font-size:24px; margin:0 0 16px 0; padding:12px 16px; border-radius:8px 8px 0 0;">
-                                Item Request Baru
+                                Item Request Ditolak
                             </h1>
 
                             <p style="font-size:16px; margin:8px 0;">
@@ -31,6 +31,10 @@
                             </p>
                             <p style="font-size:16px; margin:8px 0;">
                                 <strong style="color:black;">User:</strong> <?php echo e($itemRequest->user->name ?? '-'); ?>
+
+                            </p>
+                            <p style="font-size:16px; margin:8px 0;">
+                                <strong>Disetujui oleh:</strong> <?php echo e($itemRequest->approvedBy->name ?? '-'); ?>
 
                             </p>
                             <p style="font-size:16px; margin:8px 0;">
@@ -89,4 +93,4 @@
     </table>
 </body>
 
-</html><?php /**PATH E:\Database\MySQL\htdocs\inventopia-backend\resources\views/emails/item_request_created.blade.php ENDPATH**/ ?>
+</html><?php /**PATH E:\Database\MySQL\htdocs\inventopia-backend\resources\views/emails/item_request_rejected.blade.php ENDPATH**/ ?>

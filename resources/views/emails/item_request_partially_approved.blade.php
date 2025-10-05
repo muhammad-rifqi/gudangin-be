@@ -16,26 +16,26 @@
                         <td>
                             <!-- LOGO HEADER -->
                             <div style="text-align: center; margin-bottom: 20px;">
-                                <img src="<?php echo e($message->embed(public_path('images/logo.png'))); ?>"
+                                <img src="{{ $message->embed(public_path('images/logo.png')) }}"
                                     alt="Inventopia Logo"
                                     style="max-width: 150px; height: auto;">
                             </div>
 
                             <h1 style="display:block; width:100%; background-color:green; color:#fff; font-size:24px; margin:0 0 16px 0; padding:12px 16px; border-radius:8px 8px 0 0;">
-                                Item Request Baru
+                                Item Request Sebagian Disetujui
                             </h1>
 
                             <p style="font-size:16px; margin:8px 0;">
-                                <strong style="color:black;">Request No:</strong> <?php echo e($itemRequest->request_number); ?>
-
+                                <strong style="color:black;">Request No:</strong> {{ $itemRequest->request_number }}
                             </p>
                             <p style="font-size:16px; margin:8px 0;">
-                                <strong style="color:black;">User:</strong> <?php echo e($itemRequest->user->name ?? '-'); ?>
-
+                                <strong style="color:black;">User:</strong> {{ $itemRequest->user->name ?? '-' }}
                             </p>
                             <p style="font-size:16px; margin:8px 0;">
-                                <strong style="color:black;">Catatan:</strong> <?php echo e($itemRequest->note ?? '-'); ?>
-
+                                <strong>Disetujui oleh:</strong> {{ $itemRequest->approvedBy->name ?? '-' }}
+                            </p>
+                            <p style="font-size:16px; margin:8px 0;">
+                                <strong style="color:black;">Catatan:</strong> {{ $itemRequest->note ?? '-' }}
                             </p>
 
                             <h3
@@ -55,16 +55,15 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php $__currentLoopData = $itemRequest->details; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $d): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                    @foreach($itemRequest->details as $d)
                                     <tr>
-                                        <td style="padding:8px; border:1px solid #000000;"><?php echo e($d->product->name ?? '-'); ?>
-
+                                        <td style="padding:8px; border:1px solid #000000;">{{ $d->product->name ?? '-'
+                                            }}
                                         </td>
-                                        <td style="padding:8px; border:1px solid #000000;"><?php echo e($d->requested_quantity); ?>
-
+                                        <td style="padding:8px; border:1px solid #000000;">{{ $d->requested_quantity }}
                                         </td>
                                     </tr>
-                                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                    @endforeach
                                 </tbody>
                             </table>
 
@@ -72,14 +71,14 @@
                                 link berikut:
                             </p>
                             <div style="margin: 20px 0;">
-                                <a href="<?php echo e(url('/item-requests/' . $itemRequest->id)); ?>"
+                                <a href="{{ url('/item-requests/' . $itemRequest->id) }}"
                                     style="display: inline-block; text-align: center; background-color: green; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: bold; font-size: 16px;">
                                     Lihat Item Request
                                 </a>
                             </div>
                             <p style="margin-top:24px; font-size:16px; color:black;">
                                 Terima kasih,<br>
-                                <strong><?php echo e($itemRequest->user->name ?? 'Unknown'); ?></strong>
+                                <strong>{{ $itemRequest->user->name ?? 'Unknown' }}</strong>
                             </p>
                         </td>
                     </tr>
@@ -89,4 +88,4 @@
     </table>
 </body>
 
-</html><?php /**PATH E:\Database\MySQL\htdocs\inventopia-backend\resources\views/emails/item_request_created.blade.php ENDPATH**/ ?>
+</html>
