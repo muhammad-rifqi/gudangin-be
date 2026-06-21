@@ -39,7 +39,7 @@ class CategoryController extends Controller
             'data' => $category
         ], 201);
     }
-
+ 
     public function show(Category $category): JsonResponse
     {
         $category->load(['products' => function ($query) {
