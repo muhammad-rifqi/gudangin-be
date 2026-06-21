@@ -18,7 +18,8 @@ Route::post('logout', [LoginController::class, 'logout']);
 // === Protected routes ===
 Route::middleware('auth:sanctum')->group(function () {
     // Categories
-    Route::apiResource('categories', CategoryController::class);
+    Route::get('categories', [CategoryController::class, 'index']);
+    Route::post('categories/store', [CategoryController::class, 'store']);
 
     // Products
     Route::apiResource('products', ProductController::class);
